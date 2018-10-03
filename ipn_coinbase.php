@@ -3,131 +3,194 @@ require_once 'includes/application_top.php';
 require_once __DIR__ . '/includes/modules/payment/coinbase/init.php';
 require_once __DIR__ . '/includes/modules/payment/coinbase/const.php';
 
-function updateOrderStatus($orderId, $newOrderStatus, $comments)
+class Webhook
 {
-    $sql_data_array = array(
-        'orders_id' => $orderId,
-        'orders_status_id' => $newOrderStatus,
-        'date_added' => 'now()',
-        'comments' => $comments,
-        'customer_notified' => 0
-    );
-    tep_db_perform(TABLE_ORDERS_STATUS_HISTORY, $sql_data_array);
-    tep_db_query("UPDATE " . TABLE_ORDERS . "
-                  SET `orders_status` = '" . (int)$newOrderStatus . "'
-                  WHERE `orders_id` = '" . (int)$orderId . "'");
-}
+    /**
+     * @var array
+     */
+    private $params;
 
-$debug_email = '';
+    public function __construct()
+    {
+        $this->loadModuleParams();
+    }
 
-function sendDebugEmail($message = '', $http_error = false)
-{
-    global $debug_email;
-    if (!empty($debug_email)) {
-        $str = "Coinbase IPN Debug Report\n\n";
-        if (!empty($message)) {
-            $str .= "Debug/Error Message: " . $message . "\n\n";
+    private function loadModuleParams()
+    {
+        $settings = tep_db_query("SELECT configuration_key,configuration_value FROM " . TABLE_CONFIGURATION
+            . " WHERE configuration_key LIKE 'MODULE\_PAYMENT\_COINBASE\_%'");
+
+        if (tep_db_num_rows($settings) === 0) {
+            $this->failProcess('Settings not found.');
         }
 
-        $str .= "POST Vars\n\n";
-        foreach ($_POST as $k => $v) {
-            $str .= "$k => $v \n";
+        while ($setting = tep_db_fetch_array($settings)) {
+            $this->params[$setting['configuration_key']] = $setting['configuration_value'];
         }
-        $str .= "\nGET Vars\n\n";
-        foreach ($_GET as $k => $v) {
-            $str .= "$k => $v \n";
+    }
+
+    private function getModuleParam($paramName)
+    {
+        return array_key_exists($paramName, $this->params) ? $this->params[$paramName] : null;
+    }
+
+    private function failProcess($errorMessage)
+    {
+        http_response_code(500);
+        die();
+    }
+
+    public function process()
+    {
+        $event = $this->getEvent();
+        $charge = $event->data;
+        //$charge = $this->getCharge($event->data['id']);
+
+        if (($orderId = $charge->metadata[METADATA_INVOICE_PARAM]) === null
+            || ($userId = $charge->metadata[METADATA_CLIENT_PARAM]) === null) {
+            $this->failProcess('Invoice ID or client ID was not found in charge');
         }
-        $html_msg['EMAIL_MESSAGE_HTML'] = nl2br($str);
+        $order = $this->getOrder($orderId, $userId);
+        $lastTimeLine = end($charge->timeline);
 
-        @mail($debug_email, 'Coinbase IPN', $str);
+        switch ($lastTimeLine['status']) {
+            case 'RESOLVED':
+            case 'COMPLETED':
+                $this->handlePaid($orderId, $charge);
+                return;
+            case 'PENDING':
+                $this->updateOrderStatus(
+                    $orderId,
+                    $this->getModuleParam('MODULE_PAYMENT_COINBASE_PENDING_STATUS_ID'),
+                    sprintf('Charge %s was pending. Charge has been detected but has not been confirmed yet.', $charge['id'])
+                );
+                return;
+            case 'NEW':
+                $this->updateOrderStatus(
+                    $orderId,
+                    $this->getModuleParam('MODULE_PAYMENT_COINBASE_PENDING_STATUS_ID'),
+                    sprintf('Charge %s was created. Awaiting payment.', $charge['id'])
+                );
+                return;
+            case 'UNRESOLVED':
+                // mark order as paid on overpaid or delayed
+                if ($lastTimeLine['context'] === 'OVERPAID' || $lastTimeLine['context'] === 'DELAYED') {
+                    $this->handlePaid($orderId, $charge);
+                } else {
+                    $this->updateOrderStatus(
+                        $orderId,
+                        $this->getModuleParam('MODULE_PAYMENT_COINBASE_UNRESOLVED_STATUS_ID'),
+                        sprintf('Charge %s was unresolved.', $charge['id'])
+                    );
+                }
+                return;
+            case 'CANCELED':
+                $this->updateOrderStatus(
+                    $orderId,
+                    $this->getModuleParam('MODULE_PAYMENT_COINBASE_CANCELED_STATUS_ID'),
+                    sprintf('Charge %s was canceled.', $charge['id'])
+                );
+                return;
+            case 'EXPIRED':
+                $this->updateOrderStatus(
+                    $orderId,
+                    $this->getModuleParam('MODULE_PAYMENT_COINBASE_EXPIRED_STATUS_ID'),
+                    sprintf('Charge %s was expired.', $charge['id'])
+                );
+                return;
+        }
     }
-    if ($http_error) {
-        header("500 Internal Server Error");
-    }
-    die("[IPN Error]: " . $message . "\n");
-}
 
-$settings = tep_db_query("SELECT configuration_key,configuration_value FROM " . TABLE_CONFIGURATION
-    . " WHERE configuration_key LIKE 'MODULE\_PAYMENT\_COINBASE\_%'");
-
-if (tep_db_num_rows($settings) === 0) {
-    sendDebugEmail('Settings not found.');
-}
-
-while ($setting = tep_db_fetch_array($settings)) {
-    switch ($setting['configuration_key']) {
-        case 'MODULE_PAYMENT_COINBASE_SHARED_SECRET':
-            $sharedSecret = $setting['configuration_value'];
-            break;
-        case 'MODULE_PAYMENT_COINBASE_PENDING_STATUS_ID':
-            $pendingStatusId = $setting['configuration_value'];
-            break;
-        case 'MODULE_PAYMENT_COINBASE_PROCESSING_STATUS_ID':
-            $processingStatusId = $setting['configuration_value'];
-            break;
-    }
-}
-
-if (empty($sharedSecret)) {
-    sendDebugEmail('Shared secret secret not set in admin panel.');
-}
-
-$headers = array_change_key_case(getallheaders());
-$signatureHeader = isset($headers[SIGNATURE_HEADER]) ? $headers[SIGNATURE_HEADER] : null;
-$payload = trim(file_get_contents('php://input'));
-
-try {
-    $event = \Coinbase\Webhook::buildEvent($payload, $signatureHeader, $sharedSecret);
-} catch (\Exception $exception) {
-    sendDebugEmail($exception->getMessage());
-}
-
-$charge = $event->data;
-
-if ($charge->getMetadataParam(METADATA_SOURCE_PARAM) != METADATA_SOURCE_VALUE) {
-    sendDebugEmail('Not oscommerce charge');
-}
-
-if (($orderId = $charge->getMetadataParam(METADATA_INVOICE_PARAM)) === null
-    || ($customerId = $charge->getMetadataParam(METADATA_CLIENT_PARAM)) === null) {
-    sendDebugEmail('Invoice id is not found.');
-}
-
-$query = "SELECT * FROM " . TABLE_ORDERS . " WHERE `orders_id`='" . tep_db_input($orderId) . "' AND `customers_id`='" . tep_db_input($customerId) . "'  ORDER BY `orders_id` DESC";
-$order = tep_db_query($query);
-
-if (tep_db_num_rows($query) === 0) {
-    sendDebugEmail('Order is not exists');
-}
-
-$order = tep_db_fetch_array($order);
-$total = $order['order_total'];
-$currency = $order['currency'];
-
-switch ($event->type) {
-    case 'charge:created':
-        updateOrderStatus($orderId, $pendingStatusId, sprintf('Charge was created. Charge Id: %s', $charge->id));
-        break;
-    case 'charge:failed':
-        updateOrderStatus($orderId, $pendingStatusId, sprintf('Charge was failed. Charge Id: %s', $charge->id));
-        break;
-    case 'charge:delayed':
-        updateOrderStatus($orderId, $pendingStatusId, sprintf('Charge was delayed. Charge Id: %s', $charge->id));
-        break;
-    case 'charge:confirmed':
-        $transactionId = '';
-        $total = '';
-        $currency = '';
+    private function handlePaid($orderId, $charge)
+    {
+        $transactionId = null;
 
         foreach ($charge->payments as $payment) {
             if (strtolower($payment['status']) === 'confirmed') {
                 $transactionId = $payment['transaction_id'];
-                $total = isset($payment['value']['local']['amount']) ? $payment['value']['local']['amount'] : $total;
-                $currency = isset($payment['value']['local']['currency']) ? $payment['value']['local']['currency'] : $currency;
+                $amount = $payment['value']['local']['amount'];
+                $currency = $payment['value']['local']['currency'];
             }
         }
 
-        updateOrderStatus($orderId, $processingStatusId, sprintf('Charge was confirmed. Charge Id: %s. Received %s %s. Transaction id %s.', $charge->id, $total, $currency, $transactionId));
-        break;
+        if ($transactionId) {
+            $this->updateOrderStatus(
+                $orderId,
+                $this->getModuleParam('MODULE_PAYMENT_COINBASE_PROCESSING_STATUS_ID'),
+                sprintf('Charge %s was processed. Received amount %s %s', $charge['id'], $amount, $currency)
+            );
+        } else {
+            $this->failProcess(sprintf('Invalid charge %s. No transaction found.', $charge['id']));
+        }
+    }
+
+    function updateOrderStatus($orderId, $newOrderStatus, $comments)
+    {
+        $sql_data_array = array(
+            'orders_id' => $orderId,
+            'orders_status_id' => $newOrderStatus,
+            'date_added' => 'now()',
+            'comments' => $comments,
+            'customer_notified' => 0
+        );
+
+        tep_db_perform(TABLE_ORDERS_STATUS_HISTORY, $sql_data_array);
+        tep_db_query("UPDATE " . TABLE_ORDERS . "
+                  SET `orders_status` = '" . (int)$newOrderStatus . "'
+                  WHERE `orders_id` = '" . (int)$orderId . "'");
+    }
+
+    private function getEvent()
+    {
+        $secretKey = $this->getModuleParam('MODULE_PAYMENT_COINBASE_SHARED_SECRET');
+        $headers = array_change_key_case(getallheaders());
+        $signatureHeader = isset($headers[SIGNATURE_HEADER]) ? $headers[SIGNATURE_HEADER] : null;
+        $payload = trim(file_get_contents('php://input'));
+
+        try {
+            $event = \Coinbase\Webhook::buildEvent($payload, $signatureHeader, $secretKey);
+        } catch (\Exception $exception) {
+            $this->failProcess($exception->getMessage());
+        }
+
+        return $event;
+    }
+
+    private function getCharge($chargeId)
+    {
+        $apiKey = $this->getModuleParam('MODULE_PAYMENT_COINBASE_API_KEY');
+        \Coinbase\ApiClient::init($apiKey);
+
+        try {
+            $charge = \Coinbase\Resources\Charge::retrieve($chargeId);
+        } catch (\Exception $exception) {
+            $this->failProcess($exception->getMessage());
+        }
+
+        if (!$charge) {
+            $this->failProcess('Charge was not found in Coinbase Commerce.');
+        }
+
+        if ($charge->metadata[METADATA_SOURCE_PARAM] != METADATA_SOURCE_VALUE) {
+            $this->failProcess( 'Not oscommerce charge');
+        }
+
+        return $charge;
+    }
+
+    private function getOrder($orderId, $customerId)
+    {
+        $query = "SELECT * FROM " . TABLE_ORDERS . " WHERE `orders_id`='" . tep_db_input($orderId) . "' AND `customers_id`='" . tep_db_input($customerId) . "'  ORDER BY `orders_id` DESC";
+        $order = tep_db_query($query);
+
+        if (!$order) {
+            $this->failProcess(sprintf('Order with ID "%s" is not exists', $orderId));
+        }
+
+        return $order;
+    }
 }
+
+$webhook = new Webhook();
+$webhook->process();
 ?>
