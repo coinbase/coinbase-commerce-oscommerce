@@ -69,7 +69,7 @@ while ($setting = tep_db_fetch_array($settings)) {
 }
 
 if (empty($sharedSecret)) {
-    sendDebugEmail('shared secret secret not set in admin panel.');
+    sendDebugEmail('Shared secret secret not set in admin panel.');
 }
 
 $headers = array_change_key_case(getallheaders());
@@ -85,19 +85,19 @@ try {
 $charge = $event->data;
 
 if ($charge->getMetadataParam(METADATA_SOURCE_PARAM) != METADATA_SOURCE_VALUE) {
-    sendDebugEmail('not whmcs charge');
+    sendDebugEmail('Not oscommerce charge');
 }
 
-if (($orderId = $charge->getMetadataParam('invoiceid')) === null
-    || ($customerId = $charge->getMetadataParam('clientid')) === null) {
-    sendDebugEmail('[Error] invoice id is not found in charge');
+if (($orderId = $charge->getMetadataParam(METADATA_INVOICE_PARAM)) === null
+    || ($customerId = $charge->getMetadataParam(METADATA_CLIENT_PARAM)) === null) {
+    sendDebugEmail('Invoice id is not found.');
 }
 
 $query = "SELECT * FROM " . TABLE_ORDERS . " WHERE `orders_id`='" . tep_db_input($orderId) . "' AND `customers_id`='" . tep_db_input($customerId) . "'  ORDER BY `orders_id` DESC";
 $order = tep_db_query($query);
 
 if (tep_db_num_rows($query) === 0) {
-    sendDebugEmail('order is not exists');
+    sendDebugEmail('Order is not exists');
 }
 
 $order = tep_db_fetch_array($order);
@@ -127,7 +127,7 @@ switch ($event->type) {
             }
         }
 
-        updateOrderStatus($orderId, $processingStatusId, sprintf('Charge was confirmed. Charge Id: %s. Received %s %S. Transaction id %s.', $charge->id, $total, $currency, $transactionId));
+        updateOrderStatus($orderId, $processingStatusId, sprintf('Charge was confirmed. Charge Id: %s. Received %s %s. Transaction id %s.', $charge->id, $total, $currency, $transactionId));
         break;
 }
 ?>

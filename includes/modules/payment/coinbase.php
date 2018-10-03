@@ -106,8 +106,8 @@ class coinbase
             'description' => join($products, ', '),
             'metadata' => [
                 METADATA_SOURCE_PARAM => METADATA_SOURCE_VALUE,
-                'invoiceid' => $insert_id,
-                'clientid' => $_SESSION['customer_id'],
+                METADATA_INVOICE_PARAM => $insert_id,
+                METADATA_CLIENT_PARAM => $_SESSION['customer_id'],
                 'email' =>  $order->customer['email_address'],
                 'first_name' => $order->delivery['firstname'] != '' ? $order->delivery['firstname'] : $order->billing['firstname'],
                 'last_name' => $order->delivery['lastname'] != '' ? $order->delivery['lastname'] : $order->billing['lastname'],
