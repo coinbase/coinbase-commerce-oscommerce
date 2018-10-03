@@ -99,7 +99,7 @@ class coinbase
         $chargeData = array(
             'local_price' => array(
                 'amount' => $order->info['total'],
-                'currency' => $_SESSION['currency'],
+                'currency' => $order->info['currency'],
             ),
             'pricing_type' => 'fixed_price',
             'name' => STORE_NAME . ' order #' . $insert_id,
