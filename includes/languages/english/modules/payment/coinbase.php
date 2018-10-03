@@ -9,5 +9,5 @@ if (ENABLE_SSL == true) {
 
 define('MODULE_PAYMENT_COINBASE_TEXT_TITLE', 'Coinbase Commerce  - Bitcoin/Bitcoin Cash/Litecoin/Etherium Payments');
 define('MODULE_PAYMENT_COINBASE_TEXT_DESCRIPTION', 'Coinbase Commerce is a service that enables merchants to accept multiple cryptocurrencies directly into a user-controlled wallet. </br>'
-    . 'For instant coinbase\'s payment notificatins please copy/paste <b>' . $link . tep_output_string('ipn_coinbase.php') . '</b> url  to Settings/Webhook subscription');
+    . 'For instant coinbase\'s payment notificatins please copy/paste <b>' . $link . tep_output_string('ipn_coinbase.php') . '</b> url to Settings/Webhook subscription <b>https://commerce.coinbase.com/dashboard/settings</b>');
 define('MODULE_PAYMENT_COINBASE_TEXT_CATALOG_TITLE', 'coinbase Commerce  - Bitcoin/Bitcoin Cash/Litecoin/Etherium Payments');
