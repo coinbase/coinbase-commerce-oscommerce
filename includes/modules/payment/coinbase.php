@@ -84,7 +84,7 @@ class coinbase
 
     public function after_process()
     {
-        global $insert_id, $order, $messageStack;
+        global $insert_id, $order, $products;
 
         $sql_data_array = array(
             'orders_id' => $insert_id,
@@ -94,7 +94,7 @@ class coinbase
         );
 
         tep_db_perform(TABLE_ORDERS_STATUS_HISTORY, $sql_data_array);
-        $products = $this->getOrderProducts($insert_id);
+        $products = $this->getOrderProducts($order);
 
         $chargeData = array(
             'local_price' => array(
@@ -103,7 +103,7 @@ class coinbase
             ),
             'pricing_type' => 'fixed_price',
             'name' => STORE_NAME . ' order #' . $insert_id,
-            'description' => join($products, ', '),
+            'description' => mb_substr(join($products, ', '), 0, 200),
             'metadata' => [
                 METADATA_SOURCE_PARAM => METADATA_SOURCE_VALUE,
                 METADATA_INVOICE_PARAM => $insert_id,
@@ -112,15 +112,16 @@ class coinbase
                 'first_name' => $order->delivery['firstname'] != '' ? $order->delivery['firstname'] : $order->billing['firstname'],
                 'last_name' => $order->delivery['lastname'] != '' ? $order->delivery['lastname'] : $order->billing['lastname'],
             ],
-            'redirect_url' => tep_href_link(FILENAME_CHECKOUT_SUCCESS, 'checkout_id=' . $insert_id, 'SSL')
+            'redirect_url' => tep_href_link(FILENAME_CHECKOUT_SUCCESS, 'checkout_id=' . $insert_id, 'SSL'),
+            'cancel_url' => tep_href_link(FILENAME_CHECKOUT_PAYMENT)
         );
 
         \Coinbase\ApiClient::init(MODULE_PAYMENT_COINBASE_API_KEY);
+
         try {
             $chargeObj = \Coinbase\Resources\Charge::create($chargeData);
         } catch (\Exception $exception) {
-            $messageStack->add_session('checkout_payment',  $exception->getMessage(), 'error');
-            tep_redirect(tep_href_link(FILENAME_CHECKOUT_PAYMENT, '', 'SSL', true, false));
+            tep_redirect(tep_href_link(FILENAME_CHECKOUT_PAYMENT, 'error_message=' . $exception->getMessage(), 'SSL', true));
         }
 
         $_SESSION['cart']->reset(true);
@@ -129,14 +130,10 @@ class coinbase
         return false;
     }
 
-    private function getOrderProducts($orderId) {
-        global $order;
+    private function getOrderProducts($order) {
 
-        $products = tep_db_query("select oc.products_id, oc.products_quantity, pd.products_name from " . TABLE_ORDERS_PRODUCTS . " as oc left join " . TABLE_PRODUCTS_DESCRIPTION . " as pd on pd.products_id=oc.products_id  where orders_id=" . intval($orderId));
-        $result = array();
-
-        foreach ($products as $product) {
-            $result[] = $product['products_quantity'] . ' × ' . $product['products_name'];
+        foreach ($order->products as $product) {
+            $result[] = $product['qty'] . ' × ' . $product['name'];
         }
 
         return $result;
@@ -161,11 +158,14 @@ class coinbase
             return 'failed';
         }
 
-        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, date_added) VALUES ('Enable Cash On Delivery Module', 'MODULE_PAYMENT_COINBASE_STATUS', 'True', 'Do you want to accept CoinBase Commerce payments?', '6', '1', 'tep_cfg_select_option(array(\'True\', \'False\'), ', now())");
-        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('API Key', 'MODULE_PAYMENT_COINBASE_API_KEY','', 'API Key from Coinbase Commerce.', '6', '2', now())");
-        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('Shared Secret', 'MODULE_PAYMENT_COINBASE_SHARED_SECRET','', 'Shared Secret Key from coinbase Commerce Webhook subscriptions..', '6', '3', now())");
+        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, date_added) VALUES ('Enable Coinbase Commerce Module', 'MODULE_PAYMENT_COINBASE_STATUS', 'True', 'Do you want to accept CoinBase Commerce payments?', '6', '1', 'tep_cfg_select_option(array(\'True\', \'False\'), ', now())");
+        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('API Key', 'MODULE_PAYMENT_COINBASE_API_KEY','', 'Get API Key from Coinbase Commerce Dashboard <a href=\"https://commerce.coinbase.com/dashboard/settings\" target=\"_blank\">Settings &gt; API keys &gt; Create an API key</a>', '6', '2', now())");
+        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('Shared Secret Key', 'MODULE_PAYMENT_COINBASE_SHARED_SECRET','', 'Get Shared Secret Key from Coinbase Commerce Dashboard <a href=\"https://commerce.coinbase.com/dashboard/settings\" target=\"_blank\">Settings &gt; Show Shared Secrets</a>', '6', '3', now())");
         tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, date_added) VALUES ('Sort order of display.', 'MODULE_PAYMENT_COINBASE_SORT_ORDER', '0', 'Sort order of display. Lowest is displayed first.', '6', '5', now())");
         tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, use_function, date_added) values ('Set Pending Order Status', 'MODULE_PAYMENT_COINBASE_PENDING_STATUS_ID', '0', 'Set the status of orders made with this payment module that are not yet completed to this value<br />(\'Pending\' recommended)', '6', '6', 'tep_cfg_pull_down_order_statuses(', 'tep_get_order_status_name', now())");
+        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, use_function, date_added) values ('Set Expired Order Status', 'MODULE_PAYMENT_COINBASE_EXPIRED_STATUS_ID', '0', 'Set the status of orders made with this payment module that have expired<br />(\'Expired\' recommended)', '6', '6', 'tep_cfg_pull_down_order_statuses(', 'tep_get_order_status_name', now())");
+        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, use_function, date_added) values ('Set Canceled Order Status', 'MODULE_PAYMENT_COINBASE_CANCELED_STATUS_ID', '0', 'Set the status of orders made with this payment module that have been canceled<br />(\'Canceled\' recommended)', '6', '6', 'tep_cfg_pull_down_order_statuses(', 'tep_get_order_status_name', now())");
+        tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, use_function, date_added) values ('Set Unresolved Order Status', 'MODULE_PAYMENT_COINBASE_UNRESOLVED_STATUS_ID', '0', 'Set the status of orders made with this payment module that have been unresolved', '6', '6', 'tep_cfg_pull_down_order_statuses(', 'tep_get_order_status_name', now())");
         tep_db_query("INSERT INTO " . TABLE_CONFIGURATION . " (configuration_title, configuration_key, configuration_value, configuration_description, configuration_group_id, sort_order, set_function, use_function, date_added) values ('Set Complete Order Status', 'MODULE_PAYMENT_COINBASE_PROCESSING_STATUS_ID', '2', 'Set the status of orders made with this payment module that have completed payment to this value<br />(\'Processing\' recommended)', '6', '7', 'tep_cfg_pull_down_order_statuses(', 'tep_get_order_status_name', now())");
     }
 
@@ -191,6 +191,9 @@ class coinbase
             'MODULE_PAYMENT_COINBASE_SHARED_SECRET',
             'MODULE_PAYMENT_COINBASE_PENDING_STATUS_ID',
             'MODULE_PAYMENT_COINBASE_PROCESSING_STATUS_ID',
+            'MODULE_PAYMENT_COINBASE_EXPIRED_STATUS_ID',
+            'MODULE_PAYMENT_COINBASE_CANCELED_STATUS_ID',
+            'MODULE_PAYMENT_COINBASE_UNRESOLVED_STATUS_ID',
             'MODULE_PAYMENT_COINBASE_SORT_ORDER'
         );
     }
