@@ -16,4 +16,4 @@ jobs: # a collection of steps
         command: zip -r coinbase-commerce-oscommerce.zip src
     - run:
         name: Upload archive to github releases
-        command: php ./.cicleci/scrips/release_uploader.php --file=$(pwd)/coinbase-commerce-oscommerce.zip --token='bb147e3849fc7efede101709b54aa6983ee994c4'
+        command: php ./.cicleci/scripts/release_uploader.php --file=$(pwd)/coinbase-commerce-oscommerce.zip --token='bb147e3849fc7efede101709b54aa6983ee994c4'
