@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/HttpClient.php';
+require_once __DIR__ . '/lib/HttpClient.php';
 require_once dirname(dirname(__DIR__)) . '/src/includes/modules/payment/coinbase/const.php';
 
 

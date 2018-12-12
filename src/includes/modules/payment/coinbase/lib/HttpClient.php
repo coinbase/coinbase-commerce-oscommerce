@@ -2,7 +2,6 @@
 namespace Coinbase;
 
 use Coinbase\Exceptions\CurlErrorException;
-use Coinbase\ApiResponse;
 
 class HttpClient
 {
