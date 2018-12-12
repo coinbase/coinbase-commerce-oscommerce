@@ -59,6 +59,7 @@ class AssetUploader
         // Check is previous file was uploaded
         if (isset($release['assets'])) {
             foreach ($release['assets'] as $asset) {
+
                 if ($asset['label'] == $fileLabel) {
                     // Delete asset
                     $this->client->request('DELETE', $asset['url'], [], '', $this->headers);
