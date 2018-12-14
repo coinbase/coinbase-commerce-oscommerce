@@ -8,7 +8,7 @@ class AssetUploader
 {
     const GITHUB_API_REPOS = 'https://api.github.com/repos';
     const USER = 'chalk777';
-    const REPO_NAME = 'coinbase-commerce-oscommerce-build';
+    const REPO_NAME = 'coinbase-commerce-oscommerce';
     const PLUGIN_VERSION = PLUGIN_VERSION;
 
     public function __construct($file, $token)
