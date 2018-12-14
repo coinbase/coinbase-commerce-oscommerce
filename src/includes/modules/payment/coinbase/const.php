@@ -1,6 +1,6 @@
 <?php
 
-defined('PLUGIN_VERSION') or define('PLUGIN_VERSION', '1.0.2');
+defined('PLUGIN_VERSION') or define('PLUGIN_VERSION', '1.0.3');
 defined('METADATA_SOURCE_PARAM') or define('METADATA_SOURCE_PARAM', 'source');
 defined('METADATA_INVOICE_PARAM') or define('METADATA_INVOICE_PARAM', 'invoiceid');
 defined('METADATA_CLIENT_PARAM') or define('METADATA_CLIENT_PARAM', 'clientid');

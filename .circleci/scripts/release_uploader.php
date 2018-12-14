@@ -63,6 +63,15 @@ class AssetUploader
                 if ($asset['label'] == $fileLabel) {
                     // Delete asset
                     $this->client->request('DELETE', $asset['url'], [], '', $this->headers);
+
+                    // Update release body
+                    $body = [
+                        'body' => null
+                    ];
+
+                    $headers = array_merge($this->headers, ['Content-Type: application/json']);
+
+                    $this->client->request('PATCH', $release['url'], [], json_encode($body), $headers);
                 }
             }
         }
@@ -79,6 +88,20 @@ class AssetUploader
 
         if ($response->code == '201') {
             echo sprintf('Successfully uploaded file. File path: %s', $response->bodyArray["url"]) . PHP_EOL;
+
+            // Update release body
+            $body = [
+                'body' => sprintf('MD5 Hash of file **%s**: %s', $fileLabel, md5_file($this->file))
+            ];
+
+            $headers = array_merge($this->headers, ['Content-Type: application/json']);
+            $this->client->request(
+                'PATCH',
+                $release['url'],
+                [],
+                json_encode($body),
+                $headers
+            );
         }
     }
 }
@@ -95,10 +118,6 @@ $token = $options['token'];
 
 $handler = new AssetUploader($file, $token);
 $handler->run();
-
-
-
-//$token = 'bb147e3849fc7efede101709b54aa6983ee994c4';
 
 
 

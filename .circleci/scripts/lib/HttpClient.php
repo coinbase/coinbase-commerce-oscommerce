@@ -106,6 +106,10 @@ class HttpClient
             $opts[CURLOPT_PUT] = 1;
             $opts[CURLOPT_POSTFIELDS] = $body;
             $headers[] = 'Content-Length: ' . strlen($body);
+        } elseif ($method == 'patch') {
+            $opts[CURLOPT_CUSTOMREQUEST] = 'PATCH';
+            $opts[CURLOPT_POSTFIELDS] = $body;
+            $headers[] = 'Content-Length: ' . strlen($body);
         } elseif ($method == 'delete') {
             $opts[CURLOPT_CUSTOMREQUEST] = 'DELETE';
         }

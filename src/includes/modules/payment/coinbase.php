@@ -1,6 +1,6 @@
 <?php
 
-require_once __DIR__ . '/coinbase/init.php';
+require_once __DIR__ . '/coinbase/vendor/autoload.php';
 require_once __DIR__ . '/coinbase/const.php';
 
 class coinbase
@@ -116,10 +116,10 @@ class coinbase
             'cancel_url' => tep_href_link(FILENAME_CHECKOUT_PAYMENT)
         );
 
-        \Coinbase\ApiClient::init(MODULE_PAYMENT_COINBASE_API_KEY);
+        \CoinbaseCommerce\ApiClient::init(MODULE_PAYMENT_COINBASE_API_KEY);
 
         try {
-            $chargeObj = \Coinbase\Resources\Charge::create($chargeData);
+            $chargeObj = \CoinbaseCommerce\Resources\Charge::create($chargeData);
         } catch (\Exception $exception) {
             tep_redirect(tep_href_link(FILENAME_CHECKOUT_PAYMENT, 'error_message=' . $exception->getMessage(), 'SSL', true));
         }
