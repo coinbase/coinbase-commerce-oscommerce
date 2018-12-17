@@ -7,7 +7,7 @@ require_once dirname(dirname(__DIR__)) . '/src/includes/modules/payment/coinbase
 class AssetUploader
 {
     const GITHUB_API_REPOS = 'https://api.github.com/repos';
-    const USER = 'chalk777';
+    const USER = 'coinbase';
     const REPO_NAME = 'coinbase-commerce-oscommerce';
     const PLUGIN_VERSION = PLUGIN_VERSION;
 
